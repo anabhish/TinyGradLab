@@ -105,14 +105,11 @@ The experiment produces `pruning_trials.csv`, `pruning_results.csv`, and `prunin
 
 ## 6. Computational Cost and Sparse Execution
 
-The project includes a sparse matrix multiplication prototype and a benchmark comparing it with NumPy's dense matrix multiplication.
+The benchmark compares NumPy dense matrix multiplication with the project's Python-loop sparse implementation for a batch size of 32, 128 input features, and 128 output features. The benchmark checks numerical agreement between both paths and reports median per-call timing over five rounds of 30 repetitions.
 
-In the earlier recorded benchmark, dense multiplication took approximately 0.145 ms and the Python-loop sparse implementation took approximately 16.684 ms at the tested dimensions and sparsity. These are machine- and workload-specific measurements, not universal timings.
+In the latest recorded run, dense runtimes were approximately 0.113 ms, 0.125 ms, and 0.115 ms at 0%, 50%, and 75% sparsity, respectively. Sparse runtimes were approximately 67.195 ms, 33.163 ms, and 16.044 ms. The corresponding speedup ratios were 0.00169×, 0.00377×, and 0.00715×.
 
-The sparse implementation is slower because Python-loop overhead outweighs the computation saved by skipping zero values. Zero-valued weights in an otherwise dense matrix operation do not automatically reduce the number of operations performed by the dense kernel.
-
-Consequently, this project does not claim an inference speedup from pruning. A production deployment would need a sparse-aware execution path and measurements of latency, throughput, memory use, and active computation under the intended workload.
-
+These are measurements from one machine and one run, not universal performance guarantees. The sparse path is slower because Python-loop overhead outweighs the computation saved by skipping zero values. This project does not claim an inference speedup.
 ## 7. Serving a Self-Pruned Model in a Multi-Tenant Inference Service
 
 A self-pruned model could be served as a versioned model artifact containing its parameter values, masks, architecture configuration, and relevant metadata. The serving layer would load the artifact and use an execution path that respects the stored masks.

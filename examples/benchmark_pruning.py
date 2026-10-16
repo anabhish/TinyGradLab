@@ -26,16 +26,24 @@ def sparse_forward(x, weights):
     return sparse_matmul(x, weights)
 
 
-def benchmark(function, x, weights, repeats=100):
-    # Warm-up
+
+def benchmark(function, x, weights, repeats=30, rounds=5):
+    # Warm up the function before measuring.
     function(x, weights)
 
-    start = time.perf_counter()
-    for _ in range(repeats):
-        function(x, weights)
-    elapsed = time.perf_counter() - start
+    timings = []
 
-    return elapsed / repeats
+    for _ in range(rounds):
+        start = time.perf_counter()
+
+        for _ in range(repeats):
+            function(x, weights)
+
+        elapsed = time.perf_counter() - start
+        timings.append(elapsed / repeats)
+
+    # Median reduces the influence of unusually slow timing rounds.
+    return float(np.median(timings))
 
 
 def main():
@@ -70,8 +78,8 @@ def main():
 
         assert np.allclose(dense_result, sparse_result)
 
-        dense_time = benchmark(dense_forward, x, weights, repeats=3)
-        sparse_time = benchmark(sparse_forward, x, weights, repeats=3)
+        dense_time = benchmark(dense_forward, x, weights)
+        sparse_time = benchmark(sparse_forward, x, weights)
 
         speedup = dense_time / sparse_time
 
