@@ -76,13 +76,7 @@ Progressive pruning increases the target sparsity over multiple scheduled steps 
 The multi-seed experiment compares one-shot magnitude, progressive magnitude, one-shot Taylor saliency, and progressive Taylor saliency at multiple target sparsities.
 
 ### 4.4 Masked-weight gradient semantics
-
-A pruned parameter is constrained to remain zero by its mask. The mask is applied during parameter updates so that ordinary optimizer updates cannot restore a pruned value.
-
-The mask also applies to the corresponding momentum state. Without this, stored momentum could continue to affect a masked parameter or cause an unintended change if the parameter were later reactivated. The optimizer resets the momentum state for newly revived connections so that stale momentum is not carried into the revived parameter.
-
-The pruning experiments primarily use persistent masks; they do not establish that dynamic regrowth improves accuracy. Masked weights and optimizer state must be handled consistently for prune-then-revive behavior to be correct.
-
+A masked connection is constrained to contribute zero to the forward computation. In the current implementation, the optimizer enforces this constraint during `SGD.step()` by masking the parameter values, gradients, and momentum. Consequently, the gradient stored immediately after `backward()` may be nonzero for a masked connection; it is zeroed when the optimizer applies the mask. When a connection is revived, its momentum is reset before the update so stale momentum cannot corrupt its training. This defines the masking contract at the optimizer-step boundary.
 ## 5. Experimental Findings
 
 Experiments on the four-example XOR training dataset compare four pruning methods across five random seeds and target sparsities of 0%, 50%, 75%, 90%, and 95%.

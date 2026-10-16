@@ -71,3 +71,20 @@ def test_softmax_cross_entropy_gradient_matches_finite_difference():
     ) / (2.0 * epsilon)
 
     assert np.allclose(logits.grad[0, 0], numerical, atol=1e-6)
+
+def test_binary_cross_entropy_gradient_matches_finite_difference():
+    values = np.array([-0.4, 0.8])
+    targets = np.array([0.0, 1.0])
+    logits = Tensor(values.copy(), requires_grad=True)
+    binary_cross_entropy_with_logits(logits, targets).backward()
+
+    epsilon = 1e-5
+    plus = values.copy()
+    minus = values.copy()
+    plus[1] += epsilon
+    minus[1] -= epsilon
+    numerical = (
+        binary_cross_entropy_with_logits(Tensor(plus), targets).data.item()
+        - binary_cross_entropy_with_logits(Tensor(minus), targets).data.item()
+    ) / (2 * epsilon)
+    np.testing.assert_allclose(logits.grad[1], numerical, atol=1e-6)

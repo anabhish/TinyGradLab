@@ -26,6 +26,7 @@ def main():
     masks = {param: np.ones_like(param.data) for param in weights}
 
     optimizer = SGD(model.parameters(), lr=0.1, masks=masks)
+    rng = np.random.default_rng(42)
 
     epochs = 2000
     pruning_schedule = {
@@ -44,7 +45,7 @@ def main():
                 pruning_schedule[epoch],
             )
 
-        indices = np.random.permutation(len(X))
+        indices = rng.permutation(len(X))
         epoch_loss = 0.0
 
         for start in range(0, len(X), batch_size):

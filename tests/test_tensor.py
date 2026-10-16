@@ -469,3 +469,84 @@ def test_matrix_multiplication_gradient_matches_finite_difference():
     ) / (2.0 * epsilon)
 
     assert np.allclose(a.grad[0, 0], numerical, atol=1e-6)
+
+def test_broadcasted_subtraction_gradient_matches_finite_difference():
+    values = np.array([[1.0, 2.0], [3.0, 4.0]])
+    bias_values = np.array([0.5, -0.5])
+
+    x = Tensor(values.copy(), requires_grad=True)
+    bias = Tensor(bias_values.copy(), requires_grad=True)
+    (x - bias).sum().backward()
+
+    epsilon = 1e-5
+    plus = bias_values.copy()
+    minus = bias_values.copy()
+    plus[1] += epsilon
+    minus[1] -= epsilon
+    numerical = (np.sum(values - plus) - np.sum(values - minus)) / (2 * epsilon)
+
+    np.testing.assert_allclose(bias.grad[1], numerical, atol=1e-6)
+
+
+def test_sum_axis_gradient_matches_finite_difference():
+    values = np.array([[0.2, -0.4], [1.1, 2.0]])
+    x = Tensor(values.copy(), requires_grad=True)
+    x.sum(axis=0).sum().backward()
+
+    epsilon = 1e-5
+    plus = values.copy()
+    minus = values.copy()
+    plus[1, 0] += epsilon
+    minus[1, 0] -= epsilon
+    numerical = (np.sum(plus.sum(axis=0)) - np.sum(minus.sum(axis=0))) / (2 * epsilon)
+
+    np.testing.assert_allclose(x.grad[1, 0], numerical, atol=1e-6)
+
+
+def test_mean_axis_keepdims_gradient_matches_finite_difference():
+    values = np.array([[0.2, -0.4], [1.1, 2.0]])
+    x = Tensor(values.copy(), requires_grad=True)
+    x.mean(axis=1, keepdims=True).sum().backward()
+
+    epsilon = 1e-5
+    plus = values.copy()
+    minus = values.copy()
+    plus[1, 0] += epsilon
+    minus[1, 0] -= epsilon
+    numerical = (
+        np.sum(np.mean(plus, axis=1, keepdims=True))
+        - np.sum(np.mean(minus, axis=1, keepdims=True))
+    ) / (2 * epsilon)
+
+    np.testing.assert_allclose(x.grad[1, 0], numerical, atol=1e-6)
+
+
+def test_shared_intermediate_accumulates_gradient_from_multiple_paths():
+    x = Tensor(3.0, requires_grad=True)
+    shared = x * x
+    loss = shared + shared
+    loss.backward()
+
+    np.testing.assert_allclose(x.grad, 12.0)
+
+
+def test_multiplication_rhs_gradient_matches_finite_difference():
+    x = Tensor(3.0, requires_grad=True)
+    y = Tensor(4.0, requires_grad=True)
+    (x * y).backward()
+
+    epsilon = 1e-5
+    numerical = ((3.0 * (4.0 + epsilon)) - (3.0 * (4.0 - epsilon))) / (2 * epsilon)
+    np.testing.assert_allclose(y.grad.item(), numerical, atol=1e-6)
+
+
+def test_division_denominator_gradient_matches_finite_difference():
+    numerator = Tensor(6.0, requires_grad=True)
+    denominator = Tensor(3.0, requires_grad=True)
+    (numerator / denominator).backward()
+
+    epsilon = 1e-5
+    numerical = (
+        6.0 / (3.0 + epsilon) - 6.0 / (3.0 - epsilon)
+    ) / (2 * epsilon)
+    np.testing.assert_allclose(denominator.grad.item(), numerical, atol=1e-6)
