@@ -8,7 +8,8 @@ class Linear:
     def __init__(self, in_features, out_features, seed=42):
         rng = np.random.default_rng(seed)
 
-        # He-style scale for initializing weights
+        # He initialization uses sqrt(2 / fan_in) to help preserve
+        # activation variance through ReLU layers. Biases start at zero.
         scale = np.sqrt(2.0 / in_features)
 
         self.weight = Tensor(
