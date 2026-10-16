@@ -1,168 +1,99 @@
 # TinyGradLab
 
-TinyGradLab is a lightweight neural-network and automatic-differentiation library built from scratch using Python and NumPy. It demonstrates reverse-mode automatic differentiation, neural-network training, momentum SGD, weight pruning, and experimental sparse computation.
+TinyGradLab is a small neural-network and automatic-differentiation library implemented with Python and NumPy. It demonstrates reverse-mode autodiff, MLP training, momentum SGD, pruning, and experimental sparse computation.
 
 ## Features
 
-- Custom `Tensor` class and computation graph for reverse-mode automatic differentiation.
-- Gradient propagation and accumulation.
-- Elementwise arithmetic, broadcasting, matrix multiplication, sum, and mean operations.
-- ReLU, tanh, sigmoid, and GELU activations.
+- Custom reverse-mode `Tensor` engine with finite-difference gradient tests.
 - Numerically stable binary cross-entropy with logits and softmax cross-entropy.
-- Multilayer perceptron (MLP) for binary classification.
-- Mini-batch training with shuffled examples.
-- Momentum stochastic gradient descent (SGD).
-- Magnitude-based and Taylor-saliency-based weight pruning.
-- Progressive pruning with binary masks.
-- Mask-aware optimizer updates.
-- Sparse matrix multiplication prototype.
-- Finite-difference gradient checks and unit tests.
-- Multi-seed pruning experiments, CSV results, and a Pareto plot.
+- MLP training with mini-batches and momentum SGD.
+- Magnitude and Taylor-saliency pruning, including progressive pruning and binary masks.
+- Sparse-aware matrix multiplication prototype.
+- Multi-seed pruning comparisons, raw CSV evidence, Pareto plot, and cost benchmarks.
 
-## Requirements
+## Requirements and installation
 
-- Python 3.10 or compatible.
-- NumPy.
-- pytest for tests.
-- Matplotlib for experiment plots.
-
-The core implementation uses Python and NumPy. Scikit-learn, if used, is permitted only for dataset loading; it is not used for model training or automatic differentiation.
-
-## Installation
-
-From the project root, create and activate a virtual environment if needed.
-
-For PowerShell:
+Python 3.10+, NumPy, pytest, and Matplotlib are required.
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-```
-
-Install the project and its dependencies:
-
-```powershell
 python -m pip install -e .
 python -m pip install pytest matplotlib
 ```
 
-## Run tests
-
-Run the complete test suite:
+## Tests
 
 ```powershell
 python -m pytest -q
 ```
 
-Run the tensor and autodiff tests, including finite-difference checks:
+The revised test suite passes **77 tests** in the project environment used for this revision.
 
-```powershell
-python -m pytest tests/test_tensor.py -q
-```
+## progressive pruning and evidence
 
-Run the loss tests, including softmax cross-entropy gradient checks:
+### Importance criterion
 
-```powershell
-python -m pytest tests/test_losses.py -q
-```
+The primary method uses first-order Taylor saliency. For weight \(w_i\) and loss gradient \(g_i=\partial L/\partial w_i\), removing the connection changes the weight by \(-w_i\). A first-order Taylor approximation gives \(\Delta L_i\approx-w_i g_i\), so the importance score is \(S_i=|w_i g_i|\). The lowest-scoring active weights are pruned first.
 
-The latest recorded full test run passed **67 tests**.
+This estimates local loss sensitivity; it is not a guarantee that Taylor pruning will outperform magnitude pruning. Magnitude pruning is retained as a baseline.
 
-## Part 2 — Train the MLP
+### Progressive schedule and masks
 
-Run the training example:
+The main training example uses a 40-hidden-unit MLP on four XOR examples. Its 120 weight connections are progressively pruned from a dense warm-up to 90% target sparsity using a cubic target ramp from epochs 500 to 1500, with updates every 50 epochs. Training continues after the target is reached.
+
+Masks set pruned weights to exact zero. The optimizer masks gradients, momentum, and parameters so removed weights cannot be accidentally restored. The main training script checks the final 90% sparsity target and exact zeros, and exports `pruned_xor_model.npz` for cost measurement.
+
+### Reproduce and the Pareto experiment
 
 ```powershell
 python examples/train_mlp.py
-```
-
-The example trains an MLP on the four-example XOR dataset using mini-batches of two examples. It shuffles the examples each epoch, uses momentum SGD, and progressively prunes weights at target sparsities of 25%, 50%, and 75%.
-
-The script reports training loss, accuracy, and weight sparsity during training.
-
-The linear layers use He-style weight initialization with scale \(\sqrt{2 / \text{fan-in}}\), which is suitable for helping preserve activation variance with ReLU. Biases are initialized to zero.
-
-## Part 3 — Compare pruning methods
-
-Run the pruning comparison:
-
-```powershell
-python examples/compare_pruning.py
-```
-
-This example compares pruning behavior using the project's pruning utilities.
-
-The implementation includes:
-- **Magnitude pruning:** ranks weights by absolute value.
-- **Taylor-saliency pruning:** ranks weights using the first-order score \(|w \cdot \partial L/\partial w|\).
-- **Progressive pruning:** increases sparsity over multiple scheduled steps while retaining previously pruned weights.
-
-Taylor saliency estimates a weight's local contribution to loss using a first-order Taylor approximation. It is an approximation, not a guarantee that the resulting model will have lower loss or higher accuracy.
-
-## Part 4 — Multi-seed Pareto sweep
-
-Run the multi-seed experiment:
-
-```powershell
 python examples/multi_seed_experiment.py
 ```
 
-The experiment evaluates four methods across five target sparsities and five random seeds:
+The multi-seed experiment compares one-shot magnitude, progressive magnitude, one-shot Taylor, and progressive Taylor at 0%, 50%, 75%, 90%, and 95% target sparsity using seeds 11, 22, 33, 44, and 55.
 
-- One-shot magnitude pruning.
-- Progressive magnitude pruning.
-- One-shot Taylor-saliency pruning.
-- Progressive Taylor-saliency pruning.
+Committed evidence files:
 
-The target sparsities are 0%, 50%, 75%, 90%, and 95%.
+- `pruning_trials.csv` — all individual seed/method/target results.
+- `pruning_results.csv` — mean accuracy and loss, sample standard deviations, achieved sparsity, and active-weight counts.
+- `pruning_paired_comparison.csv` — paired Taylor-minus-magnitude accuracy differences and approximate normal 95% intervals.
+- `pruning_pareto.png` — mean accuracy versus achieved sparsity with ±1 sample standard deviation.
+- `training_curve.png` — loss, accuracy, and sparsity history for the main training example.
 
-The script generates three evidence files in the current working directory:
-
-- `pruning_trials.csv` — individual trial results.
-- `pruning_results.csv` — aggregated results.
-- `pruning_pareto.png` — Pareto plot of accuracy against sparsity.
-
-These files are intended to support reproducible comparison of pruning methods.
-
-### Experimental results
-
-The latest recorded five-seed experiment on the four-example XOR training dataset produced the following mean training accuracies:
+#### Recorded mean training accuracy
 
 | Target sparsity | One-shot magnitude | Progressive magnitude | One-shot Taylor | Progressive Taylor |
-|---|---:|---:|---:|---:|
+|---:|---:|---:|---:|---:|
 | 0% | 100% | 100% | 100% | 100% |
 | 50% | 100% | 100% | 100% | 100% |
-| 75% | 100% | 100% | 90% | 95% |
-| 90% | 75% | 95% | 55% | 70% |
-| 95% | 55% | 70% | 50% | 45% |
+| 75% | 100% | 100% | 90% | 100% |
+| 90% | 75% | 100% | 55% | 100% |
+| 95% | 55% | 90% | 50% | 70% |
 
-These are mean training accuracies across five seeds, not validation or test accuracies. The XOR dataset contains only four examples, so these results do not establish generalization to unseen data.
+**Falsifiable claim:** In the recorded experiment, progressive Taylor pruning reached 90% weight sparsity and 100% XOR training accuracy in all five seeds, matching progressive magnitude pruning at that target. The paired mean accuracy difference at 90% was 0 percentage points (sample SD 0). At 95%, progressive Taylor averaged 70% versus 90% for progressive magnitude. These are results on four training examples, not evidence of generalization; the five-seed sample is small, and Taylor did not consistently outperform magnitude pruning.
 
-In this experiment, progressive magnitude pruning outperformed progressive Taylor-saliency pruning at 90% and 95% sparsity. Taylor saliency did not consistently outperform magnitude pruning. The results are specific to this model, dataset, training setup, and random seeds.
-
-## Computational-cost benchmark
-
-Run the dense-versus-sparse matrix multiplication benchmark:
+### Real computation-cost measurement
 
 ```powershell
 python examples/benchmark_pruning.py
 ```
 
-The project includes a sparse matrix multiplication prototype for exploring computation with sparse data.
+Run `train_mlp.py` first; the benchmark then measures both a 128 × 128 sparse-kernel sweep and the actual exported pruned XOR MLP. The sparse-aware path in `src/tinygradlab/engine/sparse.py` iterates over nonzero weights rather than doing dense matrix multiplication over zeros. Outputs are checked against the dense path.
 
-**Important limitation:** setting weights to zero does not automatically accelerate dense matrix multiplication. In the current benchmark, the Python-loop sparse implementation was substantially slower than NumPy's optimized dense operation, even at high sparsity.
+The benchmark writes:
 
-The sparse implementation is a correctness-oriented prototype, not a performance-optimized inference backend. No inference speedup is claimed. Sparsity and computational speed are separate measurements, and the benchmark should be rerun on the target machine when reporting timing results.
+- `pruning_cost_benchmark.csv` — active weights, estimated MACs, and dense/sparse-aware timing for the 128 × 128 kernel.
+- `pruned_xor_model_cost.csv` — active weights, estimated MACs, and timing for the trained pruned XOR model.
 
-## Additional experiments
+In the recorded run, the XOR model had 12 active weights out of 120 (90% sparsity). Estimated MACs for four examples fell from 480 dense MACs to 48 sparse-aware MACs. Median wall-clock time was about 0.0049 ms for dense NumPy versus 0.0285 ms for the Python-loop sparse path. Therefore, this implementation **reduced estimated arithmetic work but did not improve latency**. No speedup is claimed. Benchmark timing is machine-specific.
 
-Compare plain SGD and momentum SGD:
+## Other examples
 
 ```powershell
+python examples/compare_pruning.py
 python examples/compare_optimizers.py
 ```
-
-The optimizer experiment compares training behavior on the project's small dataset. Its results should be interpreted as educational observations rather than evidence of generalization.
 
 ## Project structure
 
@@ -170,23 +101,29 @@ The optimizer experiment compares training behavior on the project's small datas
 TinyGradLab/
 ├── examples/
 │   ├── train_mlp.py
-│   ├── compare_pruning.py
 │   ├── multi_seed_experiment.py
-│   ├── compare_optimizers.py
-│   └── benchmark_pruning.py
-├── src/
-│   └── tinygradlab/
-│       ├── engine/
-│       ├── nn/
-│       └── optim/
+│   ├── benchmark_pruning.py
+│   ├── compare_pruning.py
+│   └── compare_optimizers.py
+├── src/tinygradlab/
+│   ├── engine/
+│   ├── nn/
+│   └── optim/
 ├── tests/
+├── pruning_trials.csv
+├── pruning_results.csv
+├── pruning_paired_comparison.csv
+├── pruning_pareto.png
+├── pruning_cost_benchmark.csv
+├── pruned_xor_model_cost.csv
 ├── DESIGN.md
-├── README.md
-└── pyproject.toml
+└── README.md
 ```
 
-## Scope and limitations
+## Limitations
 
-TinyGradLab is an educational implementation intended to demonstrate automatic differentiation, neural-network training, pruning, and sparse computation. The core engine and model training are implemented using Python and NumPy rather than established deep-learning or automatic-differentiation frameworks.
-
-The experiments use a very small XOR dataset. Their accuracy results are not evidence of performance on larger datasets. The sparse matrix multiplication implementation is a prototype, and actual speedups require a sparse-aware execution path and separate benchmarking.
+- The dataset contains only four XOR examples; reported accuracy is training accuracy.
+- Taylor saliency is a local first-order approximation and is not consistently better than magnitude pruning.
+- Five seeds provide limited statistical evidence.
+- The Python-loop sparse path is slower than optimized dense NumPy in the measured workloads.
+- The project is educational and does not implement a production multi-tenant serving system.

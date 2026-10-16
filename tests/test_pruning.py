@@ -104,3 +104,33 @@ def test_progressive_taylor_pruning_preserves_old_masks():
     assert np.count_nonzero(masks[weights] == 0.0) == 2
     assert np.all(masks[weights][first_mask == 0.0] == 0.0)
     assert np.all(weights.data[masks[weights] == 0.0] == 0.0)
+
+
+def test_progressive_taylor_prunes_lowest_global_saliency_across_tensors():
+    first = Tensor([1.0], requires_grad=True)
+    second = Tensor([2.0], requires_grad=True)
+    third = Tensor([3.0], requires_grad=True)
+    first.grad = np.array([0.1])   # score 0.1
+    second.grad = np.array([2.0])  # score 4.0
+    third.grad = np.array([1.0])   # score 3.0
+    parameters = [first, second, third]
+    masks = {param: np.ones_like(param.data) for param in parameters}
+
+    update_masks_by_taylor_saliency(parameters, masks, 1 / 3)
+
+    np.testing.assert_array_equal(masks[first], [0.0])
+    np.testing.assert_array_equal(masks[second], [1.0])
+    np.testing.assert_array_equal(masks[third], [1.0])
+    np.testing.assert_array_equal(first.data, [0.0])
+
+
+def test_progressive_taylor_rejects_lower_target():
+    weights = Tensor([1.0, 2.0, 3.0, 4.0], requires_grad=True)
+    weights.grad = np.array([0.1, 0.2, 0.3, 0.4])
+    masks = {}
+
+    update_masks_by_taylor_saliency([weights], masks, 0.50)
+    weights.grad = np.array([0.1, 0.2, 0.3, 0.4])
+
+    with pytest.raises(ValueError):
+        update_masks_by_taylor_saliency([weights], masks, 0.25)

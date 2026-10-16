@@ -1,0 +1,2 @@
+model,achieved_weight_sparsity,total_weights,active_weights,dense_macs_per_full_dataset,sparse_macs_per_full_dataset,dense_median_ms,sparse_aware_median_ms,dense_over_sparse_speed_ratio,dense_sparse_outputs_equivalent,measurement_examples,timing_repeats_per_round,timing_rounds
+trained_pruned_xor_mlp,0.9,120,12,480,48,0.012580000111483969,0.07552499992016237,0.16656736345292703,True,4,20,5

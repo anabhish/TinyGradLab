@@ -78,11 +78,6 @@ def update_masks_by_magnitude(parameters, masks, target_sparsity):
 
         param.data *= masks[param]
 
-    current_zeros = sum(
-        np.count_nonzero(mask == 0.0)
-        for mask in masks.values()
-        if any(mask is existing for existing in masks.values())
-    )
 
     # Count only the parameters being pruned in this operation.
     current_zeros = sum(
@@ -213,6 +208,7 @@ def update_masks_by_taylor_saliency(parameters, masks, target_sparsity):
     if additional > len(active):
         raise ValueError("not enough active weights to reach target sparsity")
 
+    # Prune the connections with the lowest Taylor saliency first.
     active.sort(key=lambda item: item[0])
 
     for _, param, index in active[:additional]:
