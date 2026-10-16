@@ -314,3 +314,158 @@ def test_repeated_backward_does_not_reuse_stale_gradients():
 
     assert np.allclose(first_grad, 6.0)
     assert np.allclose(second_grad, 6.0)
+
+
+
+def test_mean_backward_all_elements():
+    x = Tensor([1.0, 2.0, 3.0], requires_grad=True)
+    y = x.mean()
+    y.backward()
+
+    np.testing.assert_allclose(y.data, 2.0)
+    np.testing.assert_allclose(x.grad, [1 / 3, 1 / 3, 1 / 3])
+
+
+def test_mean_backward_axis():
+    x = Tensor([[1.0, 2.0], [3.0, 4.0]], requires_grad=True)
+    y = x.mean(axis=0)
+
+    # Reduce the vector result to a scalar so backward() can be called.
+    loss = y.sum()
+    loss.backward()
+
+    np.testing.assert_allclose(y.data, [2.0, 3.0])
+    np.testing.assert_allclose(
+        x.grad,
+        [[0.5, 0.5], [0.5, 0.5]],
+    )
+
+
+def test_mean_backward_keepdims():
+    x = Tensor([[1.0, 3.0], [5.0, 7.0]], requires_grad=True)
+    y = x.mean(axis=1, keepdims=True)
+
+    # The final output must be scalar for this engine's backward() API.
+    loss = y.sum()
+    loss.backward()
+
+    np.testing.assert_allclose(y.data, [[2.0], [6.0]])
+    np.testing.assert_allclose(
+        x.grad,
+        [[0.5, 0.5], [0.5, 0.5]],
+    )
+
+def numerical_gradient(function, value, epsilon=1e-5):
+    return (
+        function(value + epsilon) - function(value - epsilon)
+    ) / (2.0 * epsilon)
+
+
+def test_addition_gradient_matches_finite_difference():
+    x = Tensor(2.0, requires_grad=True)
+    (x + 4.0).backward()
+
+    numerical = numerical_gradient(lambda v: v + 4.0, 2.0)
+    assert np.allclose(x.grad.item(), numerical, atol=1e-6)
+
+
+def test_subtraction_gradient_matches_finite_difference():
+    x = Tensor(5.0, requires_grad=True)
+    (x - 2.0).backward()
+
+    numerical = numerical_gradient(lambda v: v - 2.0, 5.0)
+    assert np.allclose(x.grad.item(), numerical, atol=1e-6)
+
+
+def test_division_gradient_matches_finite_difference():
+    x = Tensor(6.0, requires_grad=True)
+    (x / 3.0).backward()
+
+    numerical = numerical_gradient(lambda v: v / 3.0, 6.0)
+    assert np.allclose(x.grad.item(), numerical, atol=1e-6)
+
+
+def test_tanh_gradient_matches_finite_difference():
+    x = Tensor(0.7, requires_grad=True)
+    x.tanh().backward()
+
+    numerical = numerical_gradient(np.tanh, 0.7)
+    assert np.allclose(x.grad.item(), numerical, atol=1e-6)
+
+
+def test_sigmoid_gradient_matches_finite_difference():
+    x = Tensor(0.7, requires_grad=True)
+    x.sigmoid().backward()
+
+    def sigmoid(value):
+        return 1.0 / (1.0 + np.exp(-value))
+
+    numerical = numerical_gradient(sigmoid, 0.7)
+    assert np.allclose(x.grad.item(), numerical, atol=1e-6)
+
+
+def test_relu_gradient_matches_finite_difference():
+    x = Tensor(0.7, requires_grad=True)
+    x.relu().backward()
+
+    numerical = numerical_gradient(lambda v: max(0.0, v), 0.7)
+    assert np.allclose(x.grad.item(), numerical, atol=1e-6)
+
+
+def test_sum_gradient_matches_finite_difference():
+    x = Tensor(2.0, requires_grad=True)
+    x.sum().backward()
+
+    numerical = numerical_gradient(lambda v: v, 2.0)
+    assert np.allclose(x.grad.item(), numerical, atol=1e-6)
+
+
+def test_mean_gradient_matches_finite_difference():
+    x = Tensor(2.0, requires_grad=True)
+    x.mean().backward()
+
+    numerical = numerical_gradient(lambda v: v, 2.0)
+    assert np.allclose(x.grad.item(), numerical, atol=1e-6)
+
+def test_broadcasting_gradient_matches_finite_difference():
+    values = np.array([[1.0, 2.0], [3.0, 4.0]])
+    bias_values = np.array([0.5, -0.5])
+
+    x = Tensor(values.copy(), requires_grad=True)
+    bias = Tensor(bias_values.copy(), requires_grad=True)
+
+    (x + bias).sum().backward()
+
+    epsilon = 1e-5
+    plus = bias_values.copy()
+    minus = bias_values.copy()
+    plus[0] += epsilon
+    minus[0] -= epsilon
+
+    numerical = (
+        np.sum(values + plus) - np.sum(values + minus)
+    ) / (2.0 * epsilon)
+
+    assert np.allclose(bias.grad[0], numerical, atol=1e-6)
+
+
+def test_matrix_multiplication_gradient_matches_finite_difference():
+    a_values = np.array([[1.0, 2.0], [3.0, 4.0]])
+    b_values = np.array([[0.5, -1.0], [2.0, 1.5]])
+
+    a = Tensor(a_values.copy(), requires_grad=True)
+    b = Tensor(b_values.copy(), requires_grad=True)
+
+    (a @ b).sum().backward()
+
+    epsilon = 1e-5
+    plus = a_values.copy()
+    minus = a_values.copy()
+    plus[0, 0] += epsilon
+    minus[0, 0] -= epsilon
+
+    numerical = (
+        np.sum(plus @ b_values) - np.sum(minus @ b_values)
+    ) / (2.0 * epsilon)
+
+    assert np.allclose(a.grad[0, 0], numerical, atol=1e-6)

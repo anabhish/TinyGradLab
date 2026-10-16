@@ -26,9 +26,6 @@ dist/
 !.env.example
 
 # Generated experiments
-pruning_pareto.png
-pruning_results.csv
-pruning_trials.csv
 
 # OS files
 .DS_Store

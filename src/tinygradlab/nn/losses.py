@@ -50,3 +50,75 @@ def binary_cross_entropy_with_logits(logits, targets):
 
     result._backward = backward
     return result
+
+
+
+def softmax_cross_entropy(logits, targets):
+    """Compute numerically stable softmax cross-entropy.
+
+    Args:
+        logits: Tensor of shape (N, C), where N is batch size
+                and C is number of classes.
+        targets: Integer class labels of shape (N,).
+
+    Returns:
+        Scalar Tensor containing mean cross-entropy loss.
+    """
+    if not isinstance(logits, Tensor):
+        raise TypeError("logits must be a Tensor")
+
+    if logits.data.ndim != 2:
+        raise ValueError("logits must be a 2D tensor of shape (N, C)")
+
+    targets = np.asarray(targets)
+
+    batch_size, num_classes = logits.data.shape
+
+    if targets.shape != (batch_size,):
+        raise ValueError("targets must have shape (N,)")
+
+    if not np.issubdtype(targets.dtype, np.integer):
+        if not np.all(targets == np.floor(targets)):
+            raise ValueError("targets must contain integer class labels")
+        targets = targets.astype(np.int64)
+
+    targets = targets.astype(np.int64)
+
+    if np.any(targets < 0) or np.any(targets >= num_classes):
+        raise ValueError("target class index is out of range")
+
+    # Subtract each row's maximum for numerical stability.
+    shifted = logits.data - np.max(logits.data, axis=1, keepdims=True)
+    exp_logits = np.exp(shifted)
+    probabilities = exp_logits / np.sum(
+        exp_logits, axis=1, keepdims=True
+    )
+
+    log_normalizer = np.log(
+        np.sum(exp_logits, axis=1)
+    )
+    per_example_loss = (
+        log_normalizer - shifted[np.arange(batch_size), targets]
+    )
+    loss_value = np.mean(per_example_loss)
+
+    result = Tensor(
+        loss_value,
+        requires_grad=logits.requires_grad,
+        _parents=(logits,),
+        _op="softmax_cross_entropy",
+    )
+
+    def backward():
+        if logits.requires_grad:
+            grad = probabilities.copy()
+            grad[np.arange(batch_size), targets] -= 1.0
+            grad *= result.grad / batch_size
+
+            if logits.grad is None:
+                logits.grad = np.zeros_like(logits.data)
+
+            logits.grad += grad
+
+    result._backward = backward
+    return result

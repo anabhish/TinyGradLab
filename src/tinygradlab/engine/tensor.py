@@ -184,6 +184,52 @@ class Tensor:
         result._backward = backward
         return result
 
+
+    def mean(self, axis=None, keepdims=False):
+        """Compute the mean and propagate gradients."""
+        result = Tensor(
+            np.mean(self.data, axis=axis, keepdims=keepdims),
+            requires_grad=self.requires_grad,
+            _parents=(self,),
+            _op="mean",
+        )
+
+        def backward():
+            if self.requires_grad:
+                grad = result.grad
+
+                if axis is None:
+                    count = self.data.size
+                else:
+                    axes = (axis,) if isinstance(axis, int) else tuple(axis)
+                    normalized_axes = tuple(
+                        a if a >= 0 else a + self.data.ndim
+                        for a in axes
+                    )
+                    count = int(np.prod([
+                        self.data.shape[a] for a in normalized_axes
+                    ]))
+
+                if axis is not None and not keepdims:
+                    axes = (axis,) if isinstance(axis, int) else tuple(axis)
+                    normalized_axes = tuple(
+                        a if a >= 0 else a + self.data.ndim
+                        for a in axes
+                    )
+                    for a in sorted(normalized_axes):
+                        grad = np.expand_dims(grad, axis=a)
+
+                grad = np.broadcast_to(grad, self.data.shape) / count
+
+                if self.grad is None:
+                    self.grad = np.zeros_like(self.data)
+
+                self.grad += grad
+
+        result._backward = backward
+        return result
+
+
     def __truediv__(self, other):
         other = other if isinstance(other, Tensor) else Tensor(other)
 

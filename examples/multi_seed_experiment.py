@@ -2,6 +2,10 @@
 import csv
 import numpy as np
 import matplotlib.pyplot as plt
+from tinygradlab.nn.pruning import (
+    taylor_saliency_prune,
+    update_masks_by_taylor_saliency,
+)
 
 
 from tinygradlab.engine.tensor import Tensor
@@ -29,27 +33,62 @@ def dataset():
 
 def run_trial(seed, target, method, epochs=2000):
     X, y = dataset()
-    model = MLP(2, 8, 1, seed=seed)
+    model = MLP(2, 40, 1, seed=seed)
     weights = [model.layer1.weight, model.layer2.weight]
     masks = {p: np.ones_like(p.data) for p in weights}
     optimizer = SGD(model.parameters(), lr=0.1, masks=masks)
 
-    if method == "one-shot":
-        schedule = {500: target}
-    else:
+    valid_methods = {
+        "one-shot-magnitude",
+        "progressive-magnitude",
+        "one-shot-taylor",
+        "progressive-taylor",
+    }
+    if method not in valid_methods:
+        raise ValueError(f"Unknown pruning method: {method}")
+
+    is_progressive = method.startswith("progressive")
+    use_taylor = method.endswith("taylor")
+
+    if is_progressive:
         schedule = {
             500: target / 3,
             1000: 2 * target / 3,
             1500: target,
         }
+    else:
+        schedule = {500: target}
 
     for epoch in range(epochs):
         if epoch in schedule:
-            if method == "one-shot":
-                new_masks = magnitude_prune(weights, target)
-                masks.update(new_masks)
+            if use_taylor:
+                # Compute fresh gradients on the current, partially trained
+                # model before ranking its active weights.
+                optimizer.zero_grad()
+                logits = model(Tensor(X))
+                loss = binary_cross_entropy_with_logits(logits, y)
+                loss.backward()
+
+                if is_progressive:
+                    update_masks_by_taylor_saliency(
+                        weights, masks, schedule[epoch]
+                    )
+                else:
+                    new_masks = taylor_saliency_prune(
+                        weights, schedule[epoch]
+                    )
+                    masks.update(new_masks)
+                    for param in weights:
+                        param.data *= masks[param]
+            elif is_progressive:
+                update_masks_by_magnitude(
+                    weights, masks, schedule[epoch]
+                )
             else:
-                update_masks_by_magnitude(weights, masks, schedule[epoch])
+                new_masks = magnitude_prune(weights, schedule[epoch])
+                masks.update(new_masks)
+                for param in weights:
+                    param.data *= masks[param]
 
         optimizer.zero_grad()
         logits = model(Tensor(X))
@@ -68,8 +107,13 @@ def run_trial(seed, target, method, epochs=2000):
 
 def main():
     seeds = [11, 22, 33, 44, 55]
-    targets = [0.25, 0.50, 0.75]
-    methods = ["one-shot", "progressive"]
+    targets = [0.0, 0.50, 0.75, 0.90, 0.95]
+    methods = [
+        "one-shot-magnitude",
+        "progressive-magnitude",
+        "one-shot-taylor",
+        "progressive-taylor",
+    ]
 
     trial_rows = []
     summary_rows = []
@@ -125,7 +169,7 @@ def main():
             f"{row['mean_sparsity']:>11.2%}"
         )
 
-    # Save all 30 individual trials.
+    # Save all individual trials.
     with open("pruning_trials.csv", "w", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=trial_rows[0].keys())
         writer.writeheader()
