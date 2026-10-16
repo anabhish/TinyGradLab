@@ -1,0 +1,35 @@
+﻿
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# IDE
+.idea/
+.vscode/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Generated experiments
+pruning_pareto.png
+pruning_results.csv
+pruning_trials.csv
+
+# OS files
+.DS_Store
+Thumbs.db
