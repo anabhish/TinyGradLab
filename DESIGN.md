@@ -1,10 +1,12 @@
-# TinyGradLab Design
+# TinyGradLab: Design and Experimental Evaluation
 
 ## 1. Overview
 
 TinyGradLab is a small neural-network and automatic-differentiation library implemented using Python and NumPy. It includes a custom reverse-mode automatic-differentiation engine, a multilayer perceptron, classification losses, pruning methods, and an SGD optimizer with momentum.
 
 The core implementation does not rely on PyTorch, TensorFlow, JAX, or Keras. The project is intended to demonstrate the mechanics of automatic differentiation, model training, weight pruning, and sparse computation.
+
+This document describes the implementation, the pruning evaluation protocol, measured outcomes, computational-cost observations, and limitations. The experiments are deliberately small and reproducible; their results characterize this setup rather than establish general performance or generalization claims.
 
 ## 2. Automatic Differentiation
 
@@ -34,9 +36,9 @@ Binary cross-entropy with logits uses a numerically stable formulation. The impl
 
 The training example uses mini-batches, shuffles examples each epoch, and updates parameters using momentum SGD. The XOR experiment is a small educational example rather than a benchmark of generalization.
 
-## 4. Parts 3 and 4 — Progressive Pruning and Evidence
+## 4. Pruning Methods and Experimental Evaluation
 
-### 4.1 Importance criterion: first-order Taylor saliency
+### 4.1 Importance Criterion: First-Order Taylor Saliency
 
 Magnitude pruning ranks weights by absolute value, \(s_i=|w_i|\), and is retained as a baseline. The primary method uses first-order Taylor saliency.
 
@@ -55,7 +57,7 @@ s_i = |w_i g_i|
 
 Active connections are ranked globally and the lowest scores are pruned first. This is a local approximation based on the current batch's loss and gradients; it ignores higher-order terms and interactions among connections. It therefore motivates a candidate ranking but does not guarantee better final accuracy than magnitude pruning.
 
-### 4.2 Progressive cubic schedule
+### 4.2 Progressive Cubic Schedule
 
 The training demonstration uses a 40-hidden-unit MLP on the four-example XOR dataset. Its two weight matrices contain 120 connections. The pruning target ramps from zero at epoch 500 to 90% at epoch 1500, with updates every 50 epochs. The target follows:
 
@@ -71,17 +73,17 @@ where \(s_f=0.90\). This cubic form increases sparsity more rapidly early in the
 
 The multi-seed comparison uses the same cubic target ramp for progressive magnitude and progressive Taylor methods. One-shot methods prune at epoch 500 and continue training for the remaining budget; they are included to compare progressive adaptation against the simpler but more abrupt alternative.
 
-### 4.3 Honest masking
+### 4.3 Mask Semantics and Optimizer Invariants
 
 Masks are binary arrays for the weight matrices. Pruning sets the mask to zero and multiplies the corresponding parameter by the mask, so removed weights are exact zeros in subsequent forward passes. The SGD optimizer masks gradients, momentum, and parameters at update time, preventing optimizer updates from reviving pruned weights. Progressive pruning only considers active mask entries, so previously pruned connections remain pruned.
 
 The tests cover Taylor score ordering, progressive mask preservation, exact zero values, and optimizer behavior. Regrowth is not implemented: permanent masks make the experiment easier to reason about and avoid the instability of reactivating weights with stale optimizer state.
 
-### 4.4 Hard sparsity budget
+### 4.4 Exact Sparsity Budget
 
 Sparsity is computed over the two weight matrices only; biases are excluded. The multi-seed experiment checks that the mask has exactly the requested number of zeros, using integer target counts. The 120-weight experiment can represent 0%, 50%, 75%, 90%, and 95% exactly. The main training example asserts that it reaches 90% and checks that every masked weight is exactly zero.
 
-### 4.5 Pareto sweep and matched baseline
+### 4.5 Multi-Seed Comparison and Accuracy–Sparsity Trade-off
 
 `examples/multi_seed_experiment.py` compares four methods at target sparsities of 0%, 50%, 75%, 90%, and 95% using seeds 11, 22, 33, 44, and 55:
 
@@ -113,7 +115,7 @@ At 90% sparsity, progressive Taylor and progressive magnitude both achieved 100%
 
 **Falsifiable claim:** With the recorded setup and seeds 11, 22, 33, 44, and 55, progressive Taylor pruning reaches 90% weight sparsity and 100% XOR training accuracy in all five trials, matching progressive magnitude at that target. The claim is falsified if rerunning the documented experiment under the same environment and settings produces a different result. It is not a claim about generalization.
 
-### 4.6 Computational cost: actual pruned model and sparse-aware path
+### 4.6 Computational Cost: Pruned Model and Sparse-Aware Execution
 
 `src/tinygradlab/engine/sparse.py` implements `sparse_matmul`, which iterates over nonzero matrix entries instead of calling dense matrix multiplication on a matrix containing zeros. `examples/benchmark_pruning.py` compares dense NumPy multiplication with this sparse-aware path, checks numerical equivalence, and records active weights, estimated multiply-accumulate counts (MACs), and median wall-clock timing.
 
@@ -123,7 +125,7 @@ In the recorded run, the trained XOR model had 12 active weights out of 120 (90%
 
 For the 128 × 128 kernel at 90% target sparsity, the recorded run had 1,639 active weights and an estimated 52,448 sparse-aware MACs per batch versus 524,288 dense MACs. Dense NumPy took about 0.021 ms; the Python-loop sparse path took about 2.946 ms. These measurements are machine- and implementation-specific. They demonstrate that fewer active operations do not automatically yield lower latency in Python. **No wall-clock speedup is claimed.**
 
-### 4.7 Reproduction
+### 4.7 Reproducibility
 
 From the project root, run:
 
@@ -138,7 +140,7 @@ git diff --check
 
 The scripts regenerate the training curve, pruning trial and summary CSVs, paired-comparison CSV, Pareto plot, and cost CSVs. Timings will vary by machine.
 
-## 5. Serving a Self-Pruned Model in a Multi-Tenant Inference Service
+## 5. Deployment Considerations for Multi-Tenant Inference
 
 A self-pruned model could be served as a versioned model artifact containing its parameter values, masks, architecture configuration, and relevant metadata. The serving layer would load the artifact and use an execution path that respects the stored masks.
 
